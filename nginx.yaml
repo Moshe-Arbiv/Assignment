@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9113'
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - mountPath: /etc/nginx/conf.d
+              name: nginx-conf
+              readOnly: true
+          resources:
+            limits:
+              memory: 512Mi
+              cpu: "1"
+        - name: adapter
+          image: nginx/nginx-prometheus-exporter
+          args: ["-nginx.scrape-uri", "http://localhost/nginx_status"]
+            #args:
+            #- '-nginx.scrape-uri=http://localhost/nginx_status'
+          ports:
+            - containerPort: 9113
+          resources:
+            limits:
+              memory: 512Mi
+              cpu: "1"
+
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: nginx-config
+            items:
+              - key: default.conf
+                path: default.conf
+
+---
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  labels:
+    app: nginx-metrics
+spec:
+  selector:
+    app: nginx
+  ports:
+    - name: ngmon
+      protocol: TCP
+      port: 8080
+      targetPort: 9113
+  type: ClusterIP
+
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+data:
+  default.conf: |
+    server {
+      listen       80;
+      server_name  localhost;
+
+      location / {
+          root   /usr/share/nginx/html;
+          index  index.html index.htm;
+        }
+
+      location /nginx_status {
+        stub_status on;
+        access_log off;
+        allow 127.0.0.1;
+        deny all;
+      }
+    }
+                       
