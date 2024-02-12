@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-deployment
+  name: nginx
 spec:
   replicas: 1
   selector:
@@ -20,13 +20,28 @@ spec:
           image: nginx
           ports:
             - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 10
           volumeMounts:
             - mountPath: /etc/nginx/conf.d
               name: nginx-conf
               readOnly: true
           resources:
+            requests:
+              cpu: "0.25"
+              memory: "256Mi"
             limits:
-              memory: 512Mi
+              memory: "512Mi"
               cpu: "1"
         - name: adapter
           image: nginx/nginx-prometheus-exporter
@@ -35,11 +50,30 @@ spec:
             #- '-nginx.scrape-uri=http://localhost/nginx_status'
           ports:
             - containerPort: 9113
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9113
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9113
+            initialDelaySeconds: 30
+            periodSeconds: 10
           resources:
+            requests:
+              cpu: "0.25"
+              memory: "256Mi"
             limits:
-              memory: 512Mi
+              memory: "512Mi"
               cpu: "1"
-
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxUnavailable: 1
+          maxSurge: 1
       volumes:
         - name: nginx-conf
           configMap:
@@ -91,4 +125,18 @@ data:
         deny all;
       }
     }
-                       
+
+---
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx
+  minReplicas: 3
+  maxReplicas: 50
+  targetCPUUtilizationPercentage: 50
